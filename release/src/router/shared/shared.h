@@ -32,7 +32,7 @@ extern const char *rt_serialno;
 extern const char *rt_extendno;
 extern const char *rt_buildname;
 extern const char *rt_buildinfo;
-
+extern const char *rt_swpjverno;
 
 #ifdef DEBUG_NOISY
 #define _dprintf		cprintf
@@ -193,6 +193,7 @@ enum {
 	MODEL_RTN12C1,
 	MODEL_RTN12D1,
 	MODEL_RTN12HP,
+	MODEL_APN12,
 	MODEL_APN12HP,
 	MODEL_RTN16,
 	MODEL_RTN15U,

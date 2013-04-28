@@ -4172,7 +4172,7 @@ int start_firewall(int wanunit, int lanunit)
 
 #if defined(RTCONFIG_APP_PREINSTALLED) || defined(RTCONFIG_APP_NETINSTALLED)
 	if(strcmp(nvram_safe_get("apps_dev"), "") != 0)
-		run_app_script("downloadmaster", "firewall-start");
+		run_app_script(NULL, "firewall-start");
 #endif
 
 #ifdef RTCONFIG_IPV6

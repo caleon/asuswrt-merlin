@@ -61,6 +61,29 @@ else
 include $(ASUSWRTVERSIONCONFDIR)/version.conf
 endif
 
+export EXTENDNO := $(shell git describe --match asuswrt_$(KERNEL_VER).$(FS_VER).$(SERIALNO) | sed 's/asuswrt_$(KERNEL_VER).$(FS_VER).$(SERIALNO)-//g')
+
+ifeq ($(EXTENDNO),)
+export EXTENDNO := 0-g$(shell git log --pretty=format:'%h' -n 1)
+endif
+
+export SWPJNAME := $(shell git branch | grep "*" | grep "swpj-" | sed 's/.*swpj-//g')
+
+ifneq ($(SWPJNAME),)
+export SWPJVERNO := $(shell cat $(SRCBASE)/router/APP-IPK/$(SWPJNAME)/CONTROL/control | grep "Version:" | sed 's/Version: //g')
+ifneq ($(SWPJVERNO),)
+export SWPJVER := $(SWPJNAME)_$(SWPJVERNO)_
+endif
+
+export SWPJEXTENDNO := $(shell git describe --match swpj_$(SWPJNAME)_$(SWPJVER) | sed 's/swpj_$(SWPJNAME)_$(SWPJVER)-//g')
+
+ifneq ($(SWPJEXTENDNO),)
+export EXTENDNO := $(SWPJEXTENDNO)
+else
+export EXTENDNO := 0-g$(shell git log --pretty=format:'%h' -n 1)
+endif
+endif
+
 include ./platform.mak
 include ./dsl.mak
 -include .config
@@ -110,6 +133,7 @@ rt_ver:
 	@echo '#define RT_VERSION "$(KERNEL_VER).$(FS_VER)"' >> router/shared/version.h
 	@echo '#define RT_SERIALNO "$(SERIALNO)"' >> router/shared/version.h
 	@echo '#define RT_EXTENDNO "$(EXTENDNO)"' >> router/shared/version.h
+	@echo '#define RT_SWPJVERNO "$(SWPJVERNO)"' >> router/shared/version.h
 	@echo '#define RT_BUILD_NAME "$(BUILD_NAME)"' >> router/shared/version.h
 	@echo '#define RT_BUILD_INFO "$(BUILD_TIME) $(BUILD_USER)@$(BUILD_INFO)"' >> router/shared/version.h
 	@echo '#endif' >> router/shared/version.h
@@ -171,7 +195,7 @@ ifeq ($(CONFIG_RALINK),y)
 	echo "PAD2: $${PAD2}" ; \
 	asustools/mkimage -A mips -O linux -T kernel -C lzma -a 80000000 -e $${ENTRY} -r $${RFSOFFSET} \
 		-n $(BUILD_NAME) -V "$(KERNEL_VER)" "$(FS_VER)" "0" "0" "0" "0" "0" "0" "0" "0" \
-		-d $(PLATFORMDIR)/zImage.img image/$(BUILD_NAME)_$(KERNEL_VER).$(FS_VER)_$(SERIALNO).trx
+		-d $(PLATFORMDIR)/zImage.img image/$(BUILD_NAME)_$(KERNEL_VER).$(FS_VER)_$(SERIALNO)_$(SWPJVER)$(EXTENDNO).trx
 else
 	$(MAKE) -C ctools
 	# Create generic TRX image
@@ -183,13 +207,13 @@ ifeq ($(BOOTLZMA),y)
 else
 	ctools/trx -o image/linux-lzma.trx lzma-loader/loader.gz ctools/vmlinuz-lzma ctools/target.squashfs
 endif
-	ctools/trx_asus -i image/linux-lzma.trx -r $(BUILD_NAME),$(KERNEL_VER).$(FS_VER),image/$(BUILD_NAME)_$(KERNEL_VER).$(FS_VER)_$(SERIALNO).trx
+	ctools/trx_asus -i image/linux-lzma.trx -r $(BUILD_NAME),$(KERNEL_VER).$(FS_VER),image/$(BUILD_NAME)_$(KERNEL_VER).$(FS_VER)_$(SERIALNO)_$(SWPJVER)$(EXTENDNO).trx
 	@rm -f image/linux-lzma.trx
 endif
 	@echo ""
 
 bin_file:
-	[ ! -e .bin/$(BUILD_NAME)/Makefile ] || $(MAKE) -C .bin/$(BUILD_NAME) O=$(SRCBASE)/image FW_FN=$(BUILD_NAME)_$(KERNEL_VER).$(FS_VER)_$(SERIALNO).trx
+	[ ! -e .bin/$(BUILD_NAME)/Makefile ] || $(MAKE) -C .bin/$(BUILD_NAME) O=$(SRCBASE)/image FW_FN=$(BUILD_NAME)_$(KERNEL_VER).$(FS_VER)_$(SERIALNO)_$(SWPJVER)$(EXTENDNO).trx
 
 clean:
 	@touch router/.config
@@ -583,6 +607,10 @@ define RouterOptions
 	if [ "$(OPTIMIZE_XBOX)" = "y" ]; then \
 		sed -i "/RTCONFIG_OPTIMIZE_XBOX/d" $(1); \
 		echo "RTCONFIG_OPTIMIZE_XBOX=y" >>$(1); \
+	fi; \
+	if [ "$(DYN_DICT_NAME)" = "y" ]; then \
+		sed -i "/RTCONFIG_DYN_DICT_NAME/d" $(1); \
+		echo "RTCONFIG_DYN_DICT_NAME=y" >>$(1); \
 	fi; \
 	)
 	$(call platformRouterOptions, $(1))

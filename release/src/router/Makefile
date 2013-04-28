@@ -221,6 +221,7 @@ obj-$(RTCONFIG_CLOUDSYNC) += curl-7.21.7
 obj-$(RTCONFIG_CLOUDSYNC) += asuswebstorage
 obj-$(RTCONFIG_CLOUDSYNC) += inotify
 
+obj-$(RTCONFIG_CLOUDSYNC) += zlib # for neon
 obj-$(RTCONFIG_CLOUDSYNC) += neon
 obj-$(RTCONFIG_CLOUDSYNC) += webdav_client
 
@@ -248,7 +249,7 @@ obj-$(RTCONFIG_PPTPD) += pptpd
 
 obj-$(RTCONFIG_WEBDAV) += sqlite
 obj-$(RTCONFIG_WEBDAV) += libxml2
-obj-$(RTCONFIG_WEBDAV) += pcre-8.12
+obj-$(RTCONFIG_WEBDAV) += pcre-8.31
 obj-$(RTCONFIG_WEBDAV) += lighttpd-1.4.29
 
 obj-$(RTCONFIG_IXIAEP) += ixia_endpoint
@@ -357,6 +358,7 @@ lzma-loader:
 lzma-loader-install: lzma-loader
 	@$(SEP)
 
+obj-y += iperf
 
 kmod: dummy
 	$(MAKE) -C $(LINUXDIR) modules CC=$(KERNELCC) $(PARALLEL_BUILD)
@@ -2123,11 +2125,11 @@ lighttpd-1.4.29/stamp-h1:
 	   ./preconfigure-script \
 	touch $@
 
-lighttpd-1.4.29: shared nvram libdisk samba-3.5.8 pcre-8.12 libxml2 sqlite openssl lighttpd-1.4.29/stamp-h1
+lighttpd-1.4.29: shared nvram libdisk samba-3.5.8 pcre-8.31 libxml2 sqlite openssl lighttpd-1.4.29/stamp-h1
 	$(MAKE) -C lighttpd-1.4.29 $(PARALLEL_BUILD)
 	$(MAKE) -C lighttpd-1.4.29/src copy-prebuild
 
-lighttpd-1.4.29-install: samba-3.5.8 sqlite libxml2 pcre-8.12 openssl lighttpd-1.4.29
+lighttpd-1.4.29-install: lighttpd-1.4.29
 	install -D lighttpd-1.4.29/src/.libs/lighttpd $(INSTALLDIR)/lighttpd-1.4.29/usr/sbin/lighttpd
 	install -D lighttpd-1.4.29/src/.libs/lighttpd-monitor $(INSTALLDIR)/lighttpd-1.4.29/usr/sbin/lighttpd-monitor
 	install -D lighttpd-1.4.29/src/.libs/lighttpd-arpping $(INSTALLDIR)/lighttpd-1.4.29/usr/sbin/lighttpd-arpping
@@ -2139,11 +2141,14 @@ lighttpd-1.4.29-install: samba-3.5.8 sqlite libxml2 pcre-8.12 openssl lighttpd-1
 	install -D lighttpd-1.4.29/src/.libs/*.so $(INSTALLDIR)/lighttpd-1.4.29/usr/lib/
 	install -D samba-3.5.8/source3/bin/libsmbclient.so.0 $(INSTALLDIR)/lighttpd-1.4.29/usr/lib/libsmbclient.so.0
 	install -D sqlite/.libs/libsqlite3.so.0 $(INSTALLDIR)/lighttpd-1.4.29/usr/lib/libsqlite3.so.0
+	install -D libexif/libexif/.libs/libexif.so.12 $(INSTALLDIR)/lighttpd-1.4.29/usr/lib/libexif.so.12
 
 	mkdir -p $(INSTALLDIR)/lighttpd-1.4.29/usr/css & mkdir -p $(INSTALLDIR)/lighttpd-1.4.29/usr/js
 #install -D lighttpd-1.4.29/external_file/css/*.* $(INSTALLDIR)/lighttpd-1.4.29/usr/css
 	cp -rf  lighttpd-1.4.29/external_file/css/ $(INSTALLDIR)/lighttpd-1.4.29/usr/
 	cp -rf  lighttpd-1.4.29/external_file/js/ $(INSTALLDIR)/lighttpd-1.4.29/usr/
+	cp -f APP-IPK/AiCloud-ipk/CONTROL/control $(INSTALLDIR)/lighttpd-1.4.29/usr/css/
+
 	$(STRIP) -s $(INSTALLDIR)/lighttpd-1.4.29/usr/lib/*.so
 	$(STRIP) -s $(INSTALLDIR)/lighttpd-1.4.29/usr/lib/*.so.0
 
@@ -2165,10 +2170,30 @@ pcre-8.12-install: pcre-8.12
 	@$(SEP)
 	install -D pcre-8.12/.libs/libpcre.so.0.0.1 $(INSTALLDIR)/pcre-8.12/usr/lib/libpcre.so.0
 	$(STRIP) -s $(INSTALLDIR)/pcre-8.12/usr/lib/libpcre.so.0
-		
+
 pcre-8.12-clean:
 	-@$(MAKE) -C pcre-8.12 clean
 	@rm -f pcre-8.12/stamp-h1
+
+pcre-8.31/stamp-h1:
+	cd pcre-8.31 && \
+	CC=$(CC) CXX=mipsel-uclibc-g++ AR=$(AR) RANLIB=$(RANLIB) LD=$(LD) CFLAGS="-Os -Wall $(EXTRACFLAGS)" \
+	./configure --prefix=/usr --host=mips-linux --disable-dependency-tracking
+	touch $@
+	[ -d pcre-8.31/m4 ] || mkdir pcre-8.31/m4
+
+pcre-8.31: pcre-8.31/stamp-h1
+
+pcre-8.31-install: pcre-8.31
+	@$(SEP)
+	install -D pcre-8.31/.libs/libpcre.so.1.0.1 $(INSTALLDIR)/pcre-8.31/usr/lib/libpcre.so.1.0.1
+	cd $(INSTALLDIR)/pcre-8.31/usr/lib && ln -sf libpcre.so.1.0.1 libpcre.so.1
+	cd $(INSTALLDIR)/pcre-8.31/usr/lib && ln -sf libpcre.so.1.0.1 libpcre.so
+	$(STRIP) -s $(INSTALLDIR)/pcre-8.31/usr/lib/libpcre.so.1.0.1
+
+pcre-8.31-clean:
+	-@$(MAKE) -C pcre-8.31 clean
+	@rm -f pcre-8.31/stamp-h1
 
 libxml2/stamp-h1:
 	cd libxml2 && \
@@ -2193,7 +2218,7 @@ libxml2-clean:
 #add install neon 
 neon/stamp-h1:
 	cd neon && \
-	./configure CC=$(CC) --build=i686-linux --host=mipsel-linux --target=mipsel-linux --enable-shared --disable-static --disable-nls --with-zlib --with-ssl=openssl --with-libs=$(TOP)/openssl:$(TOP)/libxml2 CFLAGS='-I$(TOP)/zlib -I$(TOP)/libxml2/include -I$(TOP)/openssl/include' LDFLAGS='-L$(TOP)/libxml2/.libs -L$(TOP)/openssl -L$(TOP)/zlib' LIBS='-lxml2 -lssl -lcrypto -lz'
+	./configure CC=$(CC) --build=i686-linux --host=mipsel-linux --target=mipsel-linux --enable-shared --disable-static --disable-nls --with-zlib --with-ssl=openssl --with-libs=$(TOP)/openssl:$(TOP)/libxml2 CFLAGS='-I$(TOP)/zlib -I$(TOP)/libxml2/include -I$(TOP)/openssl/include' LDFLAGS='-L$(TOP)/libxml2/.libs -L$(TOP)/openssl -L$(TOP)/zlib' LIBS='-lxml2 -lssl -lcrypto -lz' XML2_CONFIG='$(TOP)/libxml2/xml2-config'
 	cp -f neon/config.h neon/src/config.h
 	touch $@
 

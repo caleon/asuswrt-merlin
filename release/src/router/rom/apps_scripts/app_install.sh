@@ -65,6 +65,8 @@ _check_log_message(){
 		target="terminated"
 	elif [ "$action" == "update-alternatives:" ]; then
 		target=""
+	elif [ -z "$action" ]; then
+		target="Space"
 	else
 		target="error"
 	fi
@@ -363,6 +365,22 @@ if [ "$1" == "downloadmaster" ] || [ "$1" == "mediaserver" ]; then
 	elif [ "$1" == "mediaserver" ] && [ "$MS_version" -gt "15" ]; then
 		_install_package asuslighttpd $APPS_INSTALL_PATH
 	fi
+elif [ "$1" == "aicloud" ] && [ -z "$is_arm_machine" ]; then
+	AC_version=`app_get_field.sh aicloud Version 2 |awk '{FS=".";print $4}'`
+
+	if [ "$AC_version" -gt "4" ]; then
+		if [ -n "$apps_ipkg_old" ] && [ "$apps_ipkg_old" == "1" ]; then
+			deps=`app_get_field.sh smartsync Depends 2 |sed 's/,/ /g'`
+
+			for dep in $deps; do
+				echo "Installing the dependent package of smartsync: $dep..."
+				_install_package $dep $APPS_INSTALL_PATH
+			done
+		fi
+
+		echo "Installing the dependent package: smartsync..."
+		_install_package smartsync $APPS_INSTALL_PATH
+	fi
 fi
 
 echo "Installing the package: $1..."
@@ -388,6 +406,23 @@ if [ "$?" != "0" ]; then
 	exit 1
 fi
 
+if [ "$1" == "aicloud" ] && [ -z "$is_arm_machine" ]; then
+	AC_version=`app_get_field.sh aicloud Version 2 |awk '{FS=".";print $4}'`
+
+	if [ "$AC_version" -gt "4" ]; then
+		if [ -n "$apps_ipkg_old" ] && [ "$apps_ipkg_old" == "1" ]; then
+			deps=`app_get_field.sh smartsync Depends 2 |sed 's/,/ /g'`
+			echo "Enable the dependent package of smartsync: $deps..."
+			for dep in $deps; do
+				echo "Enabling the dependent package of smartsync: $dep..."
+				app_set_enabled.sh $dep "yes"
+			done
+		fi
+
+		echo "Enabling the dependent package: smartsync..."
+		app_set_enabled.sh smartsync "yes"
+	fi
+fi
 app_set_enabled.sh $1 "yes"
 
 link_internet=`nvram get link_internet`

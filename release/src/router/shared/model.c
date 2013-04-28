@@ -24,6 +24,7 @@ static const struct model_s model_list[] = {
 	{ "RT-N12C1",	MODEL_RTN12C1	},
 	{ "RT-N12D1",	MODEL_RTN12D1	},
 	{ "RT-N12HP",	MODEL_RTN12HP	},
+	{ "AP-N12",	MODEL_APN12	},
 	{ "AP-N12HP",	MODEL_APN12HP	},
 	{ "RT-N10U",	MODEL_RTN10U	},
 	{ "RT-N10+",	MODEL_RTN10P	},
@@ -58,9 +59,13 @@ static int get_model_by_hw(void)
 			return MODEL_RTN12D1;
 		if (strncmp(hw_version, "RTN12HP", 7) == 0)
 			return MODEL_RTN12HP;
+		if (strncmp(hw_version, "APN12HP", 7) == 0)
+			return MODEL_APN12HP;
 		return MODEL_RTN12;
-	}else if (strncmp(hw_version, "APN12HP", 7) == 0) {
+	}else if (strncmp(hw_version, "APN12", 5) == 0) {
+		if (strncmp(hw_version, "APN12HP", 7) == 0)
 		return MODEL_APN12HP;
+		return MODEL_APN12;
 	}
 	return MODEL_UNKNOWN;
 }
@@ -80,6 +85,8 @@ int get_model(void)
 	}
 #if !defined(RTCONFIG_RALINK)
 	if (model == MODEL_RTN12)
+		model = get_model_by_hw();
+	if (model == MODEL_APN12)
 		model = get_model_by_hw();
 #endif
 	return model;

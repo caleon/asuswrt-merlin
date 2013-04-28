@@ -670,7 +670,7 @@ set_wlpara_ra(const char* wif, int band)
 		if ((txpower >= 0) && (txpower <= 100))
 			doSystem("iwpriv %s set TxPower=%d",wif, txpower);
 	}
-
+#if 0
 	if (nvram_match(strcat_r(prefix, "bw", tmp), "2"))
 	{
 		int channel = get_channel(band);
@@ -678,6 +678,7 @@ set_wlpara_ra(const char* wif, int band)
 		if (channel)
 			eval("iwpriv", (char *)wif, "set", "HtBw=1");
 	}
+#endif
 #if 0 //defined (RTCONFIG_WLMODULE_RT3352_INIC_MII)	/* set RT3352 iNIC in kernel driver to avoid loss setting after reset */
 	if(strcmp(wif, "rai0") == 0)
 	{
@@ -915,6 +916,7 @@ void start_lan(void)
 	int match;
 	char tmp[100], prefix[] = "wlXXXXXXXXXXXXXX";
 	int i;
+	char domain_mapping[64];
 
 	update_lan_state(LAN_STATE_INITIALIZING, 0);
 
@@ -1289,6 +1291,21 @@ void start_lan(void)
 #endif
 
 	free(lan_ifname);
+
+#ifdef RTCONFIG_WIRELESSREPEATER
+	if(get_model() == MODEL_APN12HP &&
+		nvram_get_int("sw_mode") == SW_MODE_AP){
+		// When CONNECTED, need to redirect 10.0.0.1
+		// (from the browser's cache) to DUT's home page.
+		repeater_nat_setting();
+		eval("ebtables", "-t", "broute", "-F");
+		eval("ebtables", "-t", "filter", "-F");
+		eval("ebtables", "-t", "broute", "-I", "BROUTING", "-p", "ipv4", "-d", "00:E0:11:22:33:44", "-j", "redirect", "--redirect-target", "DROP");
+		sprintf(domain_mapping, "%x %s", inet_addr(nvram_safe_get("lan_ipaddr")), DUT_DOMAIN_NAME);
+		f_write_string("/proc/net/dnsmqctrl", domain_mapping, 0, 0);
+		start_nat_rules();
+	}
+#endif
 
 	nvram_set("reload_svc_radio", "1");
 
@@ -2066,7 +2083,7 @@ static int radio_switch(int subunit)
 	char tmp[100], tmp2[100], prefix[] = "wlXXXXXXXXXXXXXX";
 	char *p;
 	int i;		// unit
-	int sw = 0;	// record get_radio status
+	int sw = 1;	// record get_radio status
 	int MAX = 0;	// if MAX = 1: single band,  2: dual band
 
 #ifdef RTCONFIG_WIRELESSREPEATER
@@ -2081,7 +2098,7 @@ static int radio_switch(int subunit)
 		MAX++;
 
 	for(i = 0; i < MAX; i++){
-		sw |= get_radio(i, subunit);
+		sw &= get_radio(i, subunit);
 	}
 
 	sw = !sw;
@@ -2271,6 +2288,7 @@ update_lan_resolvconf(void)
 void
 lan_up(char *lan_ifname)
 {
+	char domain_mapping[64];
 	_dprintf("%s(%s)\n", __FUNCTION__, lan_ifname);
 
 	restart_dnsmasq();
@@ -2313,6 +2331,19 @@ lan_up(char *lan_ifname)
 		_dprintf("%s: notify wanduck: wlc_state=%d.\n", __FUNCTION__, nvram_get_int("wlc_state"));
 		// notify the change to wanduck.
 		kill_pidfile_s("/var/run/wanduck.pid", SIGUSR1);
+	}
+#endif
+
+#ifdef RTCONFIG_WIRELESSREPEATER
+	if(get_model() == MODEL_APN12HP &&
+		nvram_get_int("sw_mode") == SW_MODE_AP){
+		repeater_nat_setting();
+		eval("ebtables", "-t", "broute", "-F");
+		eval("ebtables", "-t", "filter", "-F");
+		eval("ebtables", "-t", "broute", "-I", "BROUTING", "-p", "ipv4", "-d", "00:E0:11:22:33:44", "-j", "redirect", "--redirect-target", "DROP");
+		sprintf(domain_mapping, "%x %s", inet_addr(nvram_safe_get("lan_ipaddr")), DUT_DOMAIN_NAME);
+		f_write_string("/proc/net/dnsmqctrl", domain_mapping, 0, 0);
+		start_nat_rules();
 	}
 #endif
 
@@ -2812,7 +2843,10 @@ void lanaccess_wl(void)
 
 void restart_wireless(void)
 {
-	nvram_set("wlready", "0");
+	char domain_mapping[64];
+	int lock = file_lock("wireless");
+
+	nvram_set_int("wlready", 0);
 
 	stop_wps();
 #ifdef CONFIG_BCMWL5
@@ -2872,12 +2906,31 @@ void restart_wireless(void)
 	}
 #endif
 
-	nvram_set("wlready", "1");
+#ifdef RTCONFIG_WIRELESSREPEATER
+	if(get_model() == MODEL_APN12HP &&
+		nvram_get_int("sw_mode") == SW_MODE_AP){
+		repeater_nat_setting();
+		eval("ebtables", "-t", "broute", "-F");
+		eval("ebtables", "-t", "filter", "-F");
+		eval("ebtables", "-t", "broute", "-I", "BROUTING", "-p", "ipv4", "-d", "00:E0:11:22:33:44", "-j", "redirect", "--redirect-target", "DROP");
+		sprintf(domain_mapping, "%x %s", inet_addr(nvram_safe_get("lan_ipaddr")), DUT_DOMAIN_NAME);
+		f_write_string("/proc/net/dnsmqctrl", domain_mapping, 0, 0);
+		start_nat_rules();
+	}
+#endif
+
+	nvram_set_int("wlready", 1);
+
+	file_unlock(lock);
 }
 
 /* for WPS Reset */
 void restart_wireless_wps(void)
 {
+	int lock = file_lock("wireless");
+
+	nvram_set_int("wlready", 0);
+
 	stop_wps();
 #ifdef CONFIG_BCMWL5
 	stop_nas();
@@ -2907,6 +2960,10 @@ void restart_wireless_wps(void)
 
 	restart_wl();
 	lanaccess_wl();
+
+	nvram_set_int("wlready", 1);
+
+	file_unlock(lock);
 }
 
 //FIXME: add sysdep wrapper

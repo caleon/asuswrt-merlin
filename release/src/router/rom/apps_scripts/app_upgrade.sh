@@ -58,6 +58,8 @@ _check_log_message(){
 		target="terminated"
 	elif [ "$action" == "update-alternatives:" ]; then
 		target=""
+	elif [ -z "$action" ]; then
+		target="Space"
 	else
 		target="error"
 	fi

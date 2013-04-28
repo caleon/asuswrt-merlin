@@ -663,12 +663,13 @@ restore_defaults(void)
 
 	if (restore_defaults) {
 		fprintf(stderr, "\n## Restoring defaults... ##\n");
-		logmessage(LOGNAME, "Restoring defaults...");
+//		logmessage(LOGNAME, "Restoring defaults...");	// no use
 	}
 
 #ifdef CONFIG_BCMWL5
 	restore_defaults_g = restore_defaults;
 #endif
+	nvram_set_int("wlready", 0);
 	if (restore_defaults) {
 #ifdef RTCONFIG_WPS
 		wps_restore_defaults();
@@ -1003,15 +1004,15 @@ void conf_swmode_support(int model)
 	switch (model) {
 		case MODEL_RTAC66U:
 			nvram_set("swmode_support", "router repeater ap psta");
-			logmessage(LOGNAME, "swmode: router repeater ap psta");
+			dbg("%s: swmode: router repeater ap psta", LOGNAME);
 			break;
 		case MODEL_APN12HP:
 			nvram_set("swmode_support", "repeater ap");
-			logmessage(LOGNAME, "swmode: repeater ap");
+			dbg("%s: swmode: repeater ap", LOGNAME);
 			break;
 		default:
 			nvram_set("swmode_support", "router repeater ap");
-			logmessage(LOGNAME, "swmode: router repeater ap");
+			dbg("%s: swmode: router repeater ap", LOGNAME);
 			break;
 	}
 }
@@ -1357,11 +1358,18 @@ int init_nvram(void)
 		add_rc_support("mssid");
 		nvram_set_int("btn_rst_gpio", 22|GPIO_ACTIVE_LOW);
 		nvram_set_int("btn_wps_gpio", 23|GPIO_ACTIVE_LOW);
-		nvram_set_int("led_pwr_gpio", 18|GPIO_ACTIVE_LOW);
-		nvram_set_int("led_wps_gpio", 18|GPIO_ACTIVE_LOW);
-		nvram_set_int("led_wan_gpio", 4|GPIO_ACTIVE_LOW);	/* does HP have it */
-		nvram_set_int("sb/1/ledbh5", 2);			/* is active_high? set 7 then */
+		nvram_set_int("led_pwr_gpio", 4|GPIO_ACTIVE_LOW);
+		nvram_set_int("led_wps_gpio", 4|GPIO_ACTIVE_LOW);
+		nvram_set_int("led_wan_gpio", 2|GPIO_ACTIVE_LOW);
+		nvram_set("sb/1/ledbh0", "11");
+		nvram_set("sb/1/ledbh1", "11");
+		nvram_set("sb/1/ledbh2", "11");
+		nvram_set("sb/1/ledbh3", "2");
+		nvram_set("sb/1/ledbh5", "11");
+		nvram_set("sb/1/ledbh6", "11");
 		add_rc_support("pwrctrl");
+		nvram_set_int("et_swleds", 0);
+		nvram_set("productid", "AP-N12");
 		/* go to common N12* init */
 		goto case_MODEL_RTN12X;
 
@@ -1890,6 +1898,8 @@ int init_nvram(void)
 #ifndef RTCONFIG_BCMARM
 	if(nvram_match("apps_ipkg_old", "1"))
 		nvram_set("apps_ipkg_server", "http://dlcdnet.asus.com/pub/ASUS/wireless/ASUSWRT");
+	else if(!strcmp(get_productid(), "VSL-N66U"))
+		nvram_set("apps_ipkg_server", "http://nw-dlcdnet.asus.com/asusware/mipsbig/stable");
 	else
 		nvram_set("apps_ipkg_server", "http://nw-dlcdnet.asus.com/asusware/mipsel/stable");
 #else
@@ -2339,15 +2349,17 @@ dbg("boot/continue fail= %d/%d\n", nvram_get_int("Ate_boot_fail"),nvram_get_int(
 #ifdef CONFIG_BCMWL5
 			if (restore_defaults_g)
 			{
+				restore_defaults_g = 0;
+
 				if ((get_model() == MODEL_RTAC66U) ||
 					(get_model() == MODEL_RTN12HP) ||
 					(get_model() == MODEL_RTN66U))
 					set_wltxpower();
 				restart_wireless();
-
-				restore_defaults_g = 0;
 			}
+			else
 #endif
+			nvram_set_int("wlready", 1);
 			lanaccess_wl();
 #ifdef RTCONFIG_USB_PRINTER
 			start_usblpsrv();

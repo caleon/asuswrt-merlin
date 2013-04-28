@@ -257,6 +257,9 @@ void start_usb(void)
 			f_write_string("/sys/class/leds/usb-led/gpio_pin", param, 0, 0);
 			f_write_string("/sys/class/leds/usb-led/device_name", "1-1", 0, 0);
 		}
+
+		/* big enough for minidlna to minitor all media files? */
+		f_write_string("/proc/sys/fs/inotify/max_user_watches", "100000", 0, 0);
 #endif
 
 #if defined(RTCONFIG_SAMBASRV) || defined(RTCONFIG_FTP)
@@ -319,8 +322,6 @@ void start_usb(void)
 		if (nvram_get_int("usb_printer")) {
 			symlink("/dev/usb", "/dev/printers");
 			modprobe(USBPRINTER_MOD);
-//			start_u2ec();
-//			start_lpd();
 		}
 #endif
 #ifdef RTCONFIG_USB_MODEM
@@ -365,7 +366,7 @@ void stop_usb(void)
 #if defined(RTCONFIG_APP_PREINSTALLED) && defined(RTCONFIG_CLOUDSYNC)
 	if(pids("inotify") || pids("asuswebstorage") || pids("webdav_client")){
 		_dprintf("%s: stop_cloudsync.\n", __FUNCTION__);
-		stop_cloudsync();
+		stop_cloudsync(-1);
 	}
 #endif
 
@@ -377,6 +378,8 @@ void stop_usb(void)
 
 #ifdef RTCONFIG_WEBDAV
 	stop_webdav();
+#else
+	system("sh /opt/etc/init.d/S50aicloud scan");
 #endif
 
 	stop_nas_services(0);
@@ -744,53 +747,73 @@ int umount_mountpoint(struct mntent *mnt, uint flags)
 #if defined(RTCONFIG_APP_PREINSTALLED) || defined(RTCONFIG_APP_NETINSTALLED)
 #if defined(RTCONFIG_APP_PREINSTALLED) && defined(RTCONFIG_CLOUDSYNC)
 	char word[PATH_MAX], *next_word;
-	char *cloud_setting, *b, *nvp, *nv;
+	char *b, *nvp, *nv;
+	int type = 0, enable = 0;
 	char sync_dir[PATH_MAX];
 
-	cloud_setting = nvram_safe_get("cloud_sync");
 	nv = nvp = strdup(nvram_safe_get("cloud_sync"));
 	if(nv){
 		while((b = strsep(&nvp, "<")) != NULL){
 			count = 0;
 			foreach_62(word, b, next_word){
 				switch(count){
-					case 5: // dir
-						memset(sync_dir, 0, PATH_MAX);
-						strncpy(sync_dir, word, PATH_MAX);
+					case 0: // type
+						type = atoi(word);
 						break;
-				}			
+				}
 				++count;
+			}
+
+			if(type == 1){
+				continue;
+			}
+			else if(type == 0){
+				char *b_bak, *ptr_b_bak;
+				ptr_b_bak = b_bak = strdup(b);
+				for(count = 0, next_word = strsep(&b_bak, ">"); next_word != NULL; ++count, next_word = strsep(&b_bak, ">")){
+					switch(count){
+						case 5: // dir
+							memset(sync_dir, 0, PATH_MAX);
+							strncpy(sync_dir, next_word, PATH_MAX);
+							break;
+						case 6: // enable
+							enable = atoi(next_word);
+							break;
+					}
+				}
+				free(ptr_b_bak);
+
+				if(!enable)
+					continue;
+_dprintf("cloudsync: dir=%s.\n", sync_dir);
+
+				char mounted_path[PATH_MAX], *ptr, *other_path;
+				ptr = sync_dir+strlen(POOL_MOUNT_ROOT)+1;
+_dprintf("cloudsync: ptr=%s.\n", ptr);
+				if((other_path = strchr(ptr, '/')) != NULL){
+					ptr = other_path;
+					++other_path;
+				}
+				else
+					ptr = "";
+_dprintf("cloudsync: other_path=%s.\n", other_path);
+
+				memset(mounted_path, 0, PATH_MAX);
+				strncpy(mounted_path, sync_dir, (strlen(sync_dir)-strlen(ptr)));
+_dprintf("cloudsync: mounted_path=%s.\n", mounted_path);
+
+				if(!strcmp(mounted_path, mnt->mnt_dir)){
+_dprintf("%s: stop_cloudsync.\n", __FUNCTION__);
+					stop_cloudsync(type);
+				}
 			}
 		}
 		free(nv);
-	}
-_dprintf("cloudsync: dir=%s.\n", sync_dir);
-
-	char mounted_path[PATH_MAX], *ptr, *other_path;
-	ptr = sync_dir+strlen(POOL_MOUNT_ROOT)+1;
-_dprintf("cloudsync: ptr=%s.\n", ptr);
-	if((other_path = strchr(ptr, '/')) != NULL){
-		ptr = other_path;
-		++other_path;
-	}
-	else
-		ptr = "";
-_dprintf("cloudsync: other_path=%s.\n", other_path);
-
-	memset(mounted_path, 0, PATH_MAX);
-	strncpy(mounted_path, sync_dir, (strlen(sync_dir)-strlen(ptr)));
-_dprintf("cloudsync: mounted_path=%s.\n", mounted_path);
-
-	if(!strcmp(mounted_path, mnt->mnt_dir)){
-_dprintf("%s: stop_cloudsync.\n", __FUNCTION__);
-		stop_cloudsync();
 	}
 #endif
 
 	if(nvram_match("apps_mounted_path", mnt->mnt_dir))
 		stop_app();
-
-	usb_notify();
 #endif
 
 	run_custom_script_blocking("unmount", mnt->mnt_dir);
@@ -847,6 +870,8 @@ _dprintf("%s: stop_cloudsync.\n", __FUNCTION__);
 	}
 
 #if defined(RTCONFIG_APP_PREINSTALLED) || defined(RTCONFIG_APP_NETINSTALLED)
+	usb_notify();
+
 	if(nvram_match("apps_mounted_path", mnt->mnt_dir)){
 		nvram_set("apps_dev", "");
 		nvram_set("apps_mounted_path", "");
@@ -1041,16 +1066,19 @@ done:
 		char username[64], password[64], url[PATH_MAX], sync_dir[PATH_MAX];
 		int count;
 		char cloud_token[PATH_MAX];
+		char cloud_setting_buf[PATH_MAX];
 
 		cloud_setting = nvram_safe_get("cloud_sync");
+
+		memset(cloud_setting_buf, 0, PATH_MAX);
 
 		if(!nvram_get_int("enable_cloudsync") || strlen(cloud_setting) <= 0)
 			return (ret == MOUNT_VAL_RONLY || ret == MOUNT_VAL_RW);
 
-		if(pids("inotify") || pids("asuswebstorage") || pids("webdav_client"))
+		if(pids("asuswebstorage") && pids("webdav_client"))
 			return (ret == MOUNT_VAL_RONLY || ret == MOUNT_VAL_RW);
 
-		nv = nvp = strdup(nvram_safe_get("cloud_sync"));
+		nv = nvp = strdup(cloud_setting);
 		if(nv){
 			while((b = strsep(&nvp, "<")) != NULL){
 				count = 0;
@@ -1062,56 +1090,59 @@ done:
 					}
 					++count;
 				}
-	
+
 				if(type == 1){
-						start_cloudsync();
+					if(strlen(cloud_setting_buf) > 0)
+						sprintf(cloud_setting_buf, "%s<%s", cloud_setting_buf, b);
+					else
+						strcpy(cloud_setting_buf, b);
 				}
-				else{
-					count = 0;
-					foreach_62(word, cloud_setting, next_word){
+				else if(type == 0){
+					char *b_bak, *ptr_b_bak;
+					ptr_b_bak = b_bak = strdup(b);
+					for(count = 0, next_word = strsep(&b_bak, ">"); next_word != NULL; ++count, next_word = strsep(&b_bak, ">")){
 						switch(count){
 							case 0: // type
-								type = atoi(word);
+								type = atoi(next_word);
 								break;
 							case 1: // username
 								memset(username, 0, 64);
-								strncpy(username, word, 64);
+								strncpy(username, next_word, 64);
 								break;
 							case 2: // password
 								memset(password, 0, 64);
-								strncpy(password, word, 64);
+								strncpy(password, next_word, 64);
 								break;
 							case 3: // url
 								memset(url, 0, PATH_MAX);
-								strncpy(url, word, PATH_MAX);
+								strncpy(url, next_word, PATH_MAX);
 								break;
 							case 4: // rule
-								rule = atoi(word);
+								rule = atoi(next_word);
 								break;
 							case 5: // dir
 								memset(sync_dir, 0, PATH_MAX);
-								strncpy(sync_dir, word, PATH_MAX);
+								strncpy(sync_dir, next_word, PATH_MAX);
 								break;
 							case 6: // enable
-								enable = atoi(word);
+								enable = atoi(next_word);
 								break;
 						}
-			
-						++count;
 					}
+					free(ptr_b_bak);
 _dprintf("cloudsync: enable=%d, type=%d, user=%s, dir=%s.\n", enable, type, username, sync_dir);
-			
+
 					if(!enable)
-						return (ret == MOUNT_VAL_RONLY || ret == MOUNT_VAL_RW);
-			
+						continue;
+
 					memset(cloud_token, 0, PATH_MAX);
 					sprintf(cloud_token, "%s/.__cloudsync_%d_%s.txt", mountpoint, type, username);
 _dprintf("cloudsync: cloud_token=%s.\n", cloud_token);
-			
+
 					if(check_if_file_exist(cloud_token)){
 						char mounted_path[PATH_MAX], *other_path;
 						char true_cloud_setting[PATH_MAX];
-			
+
 						ptr = sync_dir+strlen(POOL_MOUNT_ROOT)+1;
 						if((other_path = strchr(ptr, '/')) != NULL){
 							ptr = other_path;
@@ -1119,31 +1150,45 @@ _dprintf("cloudsync: cloud_token=%s.\n", cloud_token);
 						}
 						else
 							ptr = "";
-_dprintf("cloudsync: ptr=%s.\n", ptr);
-_dprintf("cloudsync: other_path=%s.\n", other_path);
-			
+
 						memset(mounted_path, 0, PATH_MAX);
 						strncpy(mounted_path, sync_dir, (strlen(sync_dir)-strlen(ptr)));
 _dprintf("cloudsync:   mountpoint=%s.\n", mountpoint);
 _dprintf("cloudsync: mounted_path=%s.\n", mounted_path);
-			
+
 						if(strcmp(mounted_path, mountpoint)){
 							memset(true_cloud_setting, 0, PATH_MAX);
 							sprintf(true_cloud_setting, "%d>%s>%s>%s>%d>%s%s%s>%d", type, username, password, url, rule, mountpoint, (other_path != NULL)?"/":"", (other_path != NULL)?other_path:"", enable);
 _dprintf("cloudsync: true_cloud_setting=%s.\n", true_cloud_setting);
-_dprintf("cloudsync: set nvram....\n");
-							nvram_set("cloud_sync", true_cloud_setting);
-_dprintf("cloudsync: wait a second...\n");
-							sleep(1); // wait the nvram be ready.
-_dprintf("cloudsync: finished.\n");
+
+							if(strlen(cloud_setting_buf) > 0)
+								sprintf(cloud_setting_buf, "%s<%s", cloud_setting_buf, true_cloud_setting);
+							else
+								strcpy(cloud_setting_buf, true_cloud_setting);
 						}
-			
-_dprintf("%s: start_cloudsync.\n", __FUNCTION__);
-						start_cloudsync();
+						else{
+							if(strlen(cloud_setting_buf) > 0)
+								sprintf(cloud_setting_buf, "%s<%s", cloud_setting_buf, b);
+							else
+								strcpy(cloud_setting_buf, b);
+						}
+					}
+					else{
+						if(strlen(cloud_setting_buf) > 0)
+							sprintf(cloud_setting_buf, "%s<%s", cloud_setting_buf, b);
+						else
+							strcpy(cloud_setting_buf, b);
 					}
 				}
 			}
 			free(nv);
+
+_dprintf("cloudsync: set nvram....\n");
+			nvram_set("cloud_sync", cloud_setting_buf);
+_dprintf("cloudsync: wait a second...\n");
+			sleep(1); // wait the nvram be ready.
+_dprintf("%s: start_cloudsync.\n", __FUNCTION__);
+			start_cloudsync(0);
 		}
 #endif
 	}
@@ -1958,7 +2003,7 @@ stop_mt_daapd()
 
 // !!TB - webdav
 
-#ifdef RTCONFIG_WEBDAV
+//#ifdef RTCONFIG_WEBDAV
 void write_webdav_permissions()
 {
 	FILE *fp;
@@ -2024,8 +2069,10 @@ void start_webdav(void)	// added by Vanic
 		return;
 	}
 
+#ifndef RTCONFIG_WEBDAV
+        system("sh /opt/etc/init.d/S50aicloud scan");
+#else
 	//static char *lighttpd_monitor_argv[] = { "lighttpd-monitor", NULL, NULL };
-
 	if(nvram_get_int("sw_mode") != SW_MODE_ROUTER) return;
 
 	if (nvram_get_int("webdav_aidisk") || nvram_get_int("webdav_proxy"))
@@ -2067,6 +2114,7 @@ void start_webdav(void)	// added by Vanic
 
 	if (pids("lighttpd"))
 		logmessage("WEBDAV server", "daemon is started");
+#endif
 }
 
 void stop_webdav(void)
@@ -2075,7 +2123,10 @@ void stop_webdav(void)
 		notify_rc("stop_webdav");
 		return;
 	}
-	
+
+#ifndef RTCONFIG_WEBDAV
+	system("sh /opt/etc/init.d/S50aicloud scan");
+#else	
     if (pids("lighttpd-monitor")){
 		kill_pidfile_tk("/tmp/lighttpd/lighttpd-monitor.pid");
 		unlink("/tmp/lighttpd/lighttpd-monitor.pid");
@@ -2096,11 +2147,12 @@ void stop_webdav(void)
 	}
 */
 	logmessage("WEBDAV Server", "daemon is stoped");
+#endif
 }
-#endif	// RTCONFIG_WEBDAV
+//#endif	// RTCONFIG_WEBDAV
 
 #ifdef RTCONFIG_CLOUDSYNC
-void start_cloudsync(void)
+void start_cloudsync(int fromUI)
 {
 	char word[PATH_MAX], *next_word;
 	char *cloud_setting, *b, *nvp, *nv;
@@ -2114,9 +2166,13 @@ void start_cloudsync(void)
 	char *cmd2_argv[] = { "asuswebstorage", NULL };
 	char *cmd3_argv[] = { "touch", cloud_token, NULL };
 	char *cmd4_argv[] = { "webdav_client", NULL };
+	char buf[32];
+
+	memset(buf, 0, 32);
+	sprintf(buf, "start_cloudsync %d", fromUI);
 
 	if(getpid()!=1) {
-		notify_rc("start_cloudsync");
+		notify_rc(buf);
 		return;
 	}
 
@@ -2145,40 +2201,41 @@ void start_cloudsync(void)
 			if(type == 1){
 				if(!pids("inotify"))
 					_eval(cmd1_argv, NULL, 0, &pid);
-			
+
 				if(!pids("webdav_client"))
 					_eval(cmd4_argv, NULL, 0, &pid);
 
 				if(pids("inotify") && pids("webdav_client"))
 					logmessage("Webdav client", "daemon is started");
 			}
-			else{
-				count = 0;
-				foreach_62(word, b, next_word){
+			else if(type == 0){
+				char *b_bak, *ptr_b_bak;
+				ptr_b_bak = b_bak = strdup(b);
+				for(count = 0, next_word = strsep(&b_bak, ">"); next_word != NULL; ++count, next_word = strsep(&b_bak, ">")){
 					switch(count){
 						case 0: // type
-							type = atoi(word);
+							type = atoi(next_word);
 							break;
 						case 1: // username
 							memset(username, 0, 64);
-							strncpy(username, word, 64);
+							strncpy(username, next_word, 64);
 							break;
 						case 5: // dir
 							memset(sync_dir, 0, PATH_MAX);
-							strncpy(sync_dir, word, PATH_MAX);
+							strncpy(sync_dir, next_word, PATH_MAX);
 							break;
 						case 6: // enable
-							enable = atoi(word);
+							enable = atoi(next_word);
 							break;
 					}
-			
-					++count;
 				}
+				free(ptr_b_bak);
+
 				if(!enable){
 					logmessage("Cloudsync client", "manually disabled");
-					return;
+					continue;
 				}
-			
+
 				ptr = sync_dir+strlen(POOL_MOUNT_ROOT)+1;
 				if((other_path = strchr(ptr, '/')) != NULL){
 					ptr = other_path;
@@ -2186,22 +2243,22 @@ void start_cloudsync(void)
 				}
 				else
 					ptr = "";
-			
+
 				memset(mounted_path, 0, PATH_MAX);
 				strncpy(mounted_path, sync_dir, (strlen(sync_dir)-strlen(ptr)));
-			
+
 				FILE *fp;
 				char check_target[PATH_MAX], line[PATH_MAX];
 				int got_mount = 0;
-			
+
 				memset(check_target, 0, PATH_MAX);
 				sprintf(check_target, " %s ", mounted_path);
-			
+
 				if((fp = fopen(MOUNT_FILE, "r")) == NULL){
 					logmessage("Cloudsync client", "Could read the disk's data");
 					return;
 				}
-			
+
 				while(fgets(line, sizeof(line), fp) != NULL){
 					if(strstr(line, check_target)){
 						got_mount = 1;
@@ -2209,27 +2266,31 @@ void start_cloudsync(void)
 					}
 				}
 				fclose(fp);
-			
+
 				if(!got_mount){
 					logmessage("Cloudsync client", "The specific disk isn't existed");
-					return;
+					continue;
 				}
-			
+
 				if(strlen(sync_dir))
 					mkdir_if_none(sync_dir);
-			
+
 				memset(cloud_token, 0, PATH_MAX);
 				sprintf(cloud_token, "%s/.__cloudsync_%d_%s.txt", mounted_path, type, username);
-			
+				if(!fromUI && !check_if_file_exist(cloud_token)){
+_dprintf("start_cloudsync: No token file.\n");
+					continue;
+				}
+
 				_eval(cmd3_argv, NULL, 0, NULL);
 
 				if(!pids("inotify"))
 					_eval(cmd1_argv, NULL, 0, &pid);
-				
+
 				if(!pids("asuswebstorage"))
 					_eval(cmd2_argv, NULL, 0, &pid);
 				sleep(2); // wait asuswebstorage.
-			
+
 				if(pids("inotify") && pids("asuswebstorage"))
 					logmessage("Cloudsync client", "daemon is started");
 			}
@@ -2238,22 +2299,48 @@ void start_cloudsync(void)
 	}
 }
 
-void stop_cloudsync(void)
+void stop_cloudsync(int type)
 {
+	char buf[32];
+
+	memset(buf, 0, 32);
+	sprintf(buf, "stop_cloudsync %d", type);
+
 	if(getpid()!=1) {
-		notify_rc("stop_cloudsync");
+		notify_rc(buf);
 		return;
 	}
-  if(pids("inotify"))
-		killall_tk("inotify");
 
-  if(pids("webdav_client"))
-		killall_tk("webdav_client");
+	if(type == 1){
+		if(pids("inotify") && !pids("asuswebstorage"))
+			killall_tk("inotify");
 
-	if(pids("asuswebstorage"))
-		killall_tk("asuswebstorage");
+		if(pids("webdav_client"))
+			killall_tk("webdav_client");
 
-	logmessage("Cloudsync client and Webdav_client", "daemon is stoped");
+		logmessage("Webdav_client", "daemon is stoped");
+	}
+	else if(type == 0){
+		if(pids("inotify") && !pids("webdav_client"))
+			killall_tk("inotify");
+
+		if(pids("asuswebstorage"))
+			killall_tk("asuswebstorage");
+
+		logmessage("Cloudsync client", "daemon is stoped");
+	}
+	else{
+  	if(pids("inotify"))
+			killall_tk("inotify");
+
+  	if(pids("webdav_client"))
+			killall_tk("webdav_client");
+
+		if(pids("asuswebstorage"))
+			killall_tk("asuswebstorage");
+
+		logmessage("Cloudsync client and Webdav_client", "daemon is stoped");
+	}
 }
 #endif
 
@@ -2270,6 +2357,8 @@ void start_nas_services(int force)
 #ifdef RTCONFIG_WEBDAV
 		// webdav still needed if no disk is mounted
 		start_webdav();
+#else
+		system("sh /opt/etc/init.d/S50aicloud scan");
 #endif
 
 #ifdef RTCONFIG_SAMBASRV
@@ -2361,6 +2450,8 @@ void restart_sambaftp(int stop, int start)
 #endif
 #ifdef RTCONFIG_WEBDAV
 		stop_webdav();
+#else
+		system("sh /opt/etc/init.d/S50aicloud scan");
 #endif
 #ifdef RTCONFIG_NFS
 		start_nfsd();
@@ -2382,6 +2473,8 @@ void restart_sambaftp(int stop, int start)
 #endif
 #ifdef RTCONFIG_WEBDAV
 		start_webdav();
+#else
+		system("sh /opt/etc/init.d/S50aicloud scan");
 #endif
 	}
 	file_unlock(fd);
@@ -2921,7 +3014,7 @@ void usb_notify(){
 #endif
 #endif // RTCONFIG_USB
 
-#ifdef RTCONFIG_WEBDAV
+//#ifdef RTCONFIG_WEBDAV
 #define DEFAULT_WEBDAVPROXY_RIGHT 0
 
 int find_webdav_right(char *account)
@@ -2975,7 +3068,7 @@ void webdav_account_default(void)
 		nvram_set("acc_webdavproxy", new);
 	}
 }
-#endif
+//#endif
 
 #ifdef LINUX26
 int start_sd_idle(void) {

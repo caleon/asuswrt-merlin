@@ -755,11 +755,19 @@ setAllLedOn(void)
 		{
 			led_control(LED_WPS, LED_ON);
 		}
+		case MODEL_APN12HP:
+		{
+			led_control(LED_POWER, LED_ON);
+			/* convert from shared, boardapi.c */
+			nvram_set_int("led_2g_gpio", 4099);
+			led_control(LED_2G, LED_ON);
+			led_control(LED_WAN, LED_ON);
+			break;
+		}
 		case MODEL_RTN12B1:
 		case MODEL_RTN12C1:
 		case MODEL_RTN12D1:
 		case MODEL_RTN12HP:
-		case MODEL_APN12HP:
 		{
 			eval("et", "robowr", "00", "0x12", "0xfd55");
 			eval("radio", "on"); /* wireless */
@@ -825,11 +833,19 @@ setAllLedOff(void)
 		{
 			led_control(LED_WPS, LED_OFF);
 		}
+		case MODEL_APN12HP:
+		{
+			led_control(LED_POWER, LED_OFF);
+			/* convert from shared, boardapi.c */
+			nvram_set_int("led_2g_gpio", 4099);
+			led_control(LED_2G, LED_OFF);
+			led_control(LED_WAN, LED_OFF);
+			break;
+		}
 		case MODEL_RTN12B1:
 		case MODEL_RTN12C1:
 		case MODEL_RTN12D1:
 		case MODEL_RTN12HP:
-		case MODEL_APN12HP:
 		{
 			eval("et", "robowr", "00", "0x12", "0xf800");
 			eval("radio", "off"); /* wireless */

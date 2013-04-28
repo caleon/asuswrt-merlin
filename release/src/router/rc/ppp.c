@@ -120,10 +120,7 @@ ipup_main(int argc, char **argv)
 	if ((value = getenv("IPREMOTE")))
 		nvram_set(strcat_r(prefix, "gateway", tmp), value);
 
-#ifdef RTCONFIG_DSL
-	/* Paul add 2013/1/23, only for Auto DNS and 3G/4G */
 	if (!nvram_match(strcat_r(prefix, "dnsenable_x", tmp), "0")) {
-#endif
 		strcpy(buf, "");
 		if ((value = getenv("DNS1")))
 			sprintf(buf, "%s", value);
@@ -132,9 +129,7 @@ ipup_main(int argc, char **argv)
 
 		/* set PPP DNS, no DNS/usepeerdns forces update_resolvconf use xdns value */
 		nvram_set(strcat_r(prefix, "dns", tmp), buf);
-#ifdef RTCONFIG_DSL
 	}
-#endif
 
 	wan_up(wan_ifname);
 

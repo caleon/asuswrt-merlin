@@ -471,9 +471,6 @@ void init_switch()
  	|| nvram_get_int("sw_mode") == SW_MODE_REPEATER
 // #endif
 // #endif
-#ifdef RTCONFIG_USB_MODEM
-	|| nvram_get_int("ctf_disable_modem")
-#endif
 	|| (get_ipv6_service() != IPV6_DISABLED)
 	) {
 		nvram_set("ctf_disable", "1");
@@ -658,6 +655,7 @@ void init_syspara(void)
 	nvram_set("buildno", rt_serialno);
 	nvram_set("extendno", rt_extendno);
 	nvram_set("buildinfo", rt_buildinfo);
+	nvram_set("swpjverno", rt_swpjverno);
 	ptr = nvram_get("regulation_domain");
 
 	model = get_model();
@@ -2983,7 +2981,10 @@ set_wan_tag(char *interface) {
 				// Set vlan table entry register
 				sprintf(vlan_entry, "0x%x", voip_vid);
 				_dprintf("vlan entry: %s\n", vlan_entry);
-				eval("et", "robowr", "0x05", "0x83", "0x0805");
+                                if (voip_vid == iptv_vid)
+                                        eval("et", "robowr", "0x05", "0x83", "0x0C07");
+                                else
+					eval("et", "robowr", "0x05", "0x83", "0x0805");
 				eval("et", "robowr", "0x05", "0x81", vlan_entry);
 				eval("et", "robowr", "0x05", "0x80", "0x0000");
 				eval("et", "robowr", "0x05", "0x80", "0x0080");
@@ -2998,7 +2999,10 @@ set_wan_tag(char *interface) {
 				// Set vlan table entry register
 				sprintf(vlan_entry, "0x%x", iptv_vid);
 				_dprintf("vlan entry: %s\n", vlan_entry);
-				eval("et", "robowr", "0x05", "0x83", "0x0403");
+                                if (voip_vid == iptv_vid)
+                                        eval("et", "robowr", "0x05", "0x83", "0x0C07");
+                                else
+					eval("et", "robowr", "0x05", "0x83", "0x0403");
 				eval("et", "robowr", "0x05", "0x81", vlan_entry);
 				eval("et", "robowr", "0x05", "0x80", "0x0000");
 				eval("et", "robowr", "0x05", "0x80", "0x0080");
@@ -3194,7 +3198,10 @@ set_wan_tag(char *interface) {
 				/* Set vlan table entry register */
 				sprintf(vlan_entry, "0x%x", voip_vid);
 				_dprintf("vlan entry: %s\n", vlan_entry);
-				eval("et", "robowr", "0x05", "0x83", "0x412");
+                                if (voip_vid == iptv_vid)
+                                        eval("et", "robowr", "0x05", "0x83", "0x0613");
+                                else
+					eval("et", "robowr", "0x05", "0x83", "0x0412");
 				eval("et", "robowr", "0x05", "0x81", vlan_entry);
 				eval("et", "robowr", "0x05", "0x80", "0x0000");
 				eval("et", "robowr", "0x05", "0x80", "0x0080");
@@ -3208,7 +3215,10 @@ set_wan_tag(char *interface) {
 				/* Set vlan table entry register */
 				sprintf(vlan_entry, "0x%x", iptv_vid);
 				_dprintf("vlan entry: %s\n", vlan_entry);
-				eval("et", "robowr", "0x05", "0x83", "0x0211");
+                                if (voip_vid == iptv_vid)
+                                        eval("et", "robowr", "0x05", "0x83", "0x0613");
+                                else
+					eval("et", "robowr", "0x05", "0x83", "0x0211");
 				eval("et", "robowr", "0x05", "0x81", vlan_entry);
 				eval("et", "robowr", "0x05", "0x80", "0x0000");
 				eval("et", "robowr", "0x05", "0x80", "0x0080");

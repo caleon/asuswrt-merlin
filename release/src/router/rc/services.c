@@ -1062,7 +1062,7 @@ start_wps_pbc(int unit)
 #ifdef RTCONFIG_BCMWL6
 		restart_wireless();
 		int delay_count = 10;
-		while ((delay_count-- > 0) && !nvram_match("wlready", "1"))
+		while ((delay_count-- > 0) && !nvram_get_int("wlready"))
 			sleep(1);
 #else
 		restart_wireless();
@@ -1804,8 +1804,8 @@ start_ddns(void)
 		    (strcmp(nvram_safe_get("ddns_hostname_x"), nvram_safe_get("ddns_hostname_old")) == 0) &&
 		    (nvram_match("ddns_updated", "1"))) {
 			nvram_set("ddns_return_code", "no_change");
-			logmessage("ddns", "IP address & hostname have not changed since the last update.");
-			_dprintf("IP address & hostname have not changed since the last update.");
+			logmessage("ddns", "IP address, server and hostname have not changed since the last update.");
+			_dprintf("IP address, server and hostname have not changed since the last update.");
 			return -1;
 		}
 
@@ -1816,9 +1816,12 @@ start_ddns(void)
 		// update
 		// * nvram ddns_cache, the same with /tmp/ddns.cache
 
-		if (!nvram_match("ddns_server_x_old", "") &&
-		    strcmp(nvram_safe_get("ddns_server_x"), nvram_safe_get("ddns_server_x_old"))) {
-			logmessage("ddns", "clear ddns cache file for server setting change");
+		if (	(!nvram_match("ddns_server_x_old", "") &&
+			strcmp(nvram_safe_get("ddns_server_x"), nvram_safe_get("ddns_server_x_old"))) ||
+			(!nvram_match("ddns_hostname_x_old", "") &&
+			strcmp(nvram_safe_get("ddns_hostname_x"), nvram_safe_get("ddns_hostname_x_old")))
+		) {
+			logmessage("ddns", "clear ddns cache file for server/hostname change");
 			unlink("/tmp/ddns.cache");
 		}
 		else if (!(fp = fopen("/tmp/ddns.cache", "r")) && (ddns_cache = nvram_get("ddns_cache"))) {
@@ -1881,7 +1884,6 @@ start_ddns(void)
 		char *nserver = nvram_invmatch("ddns_serverhost_x", "") ?
 			nvram_safe_get("ddns_serverhost_x") :
 			"ns1.asuscomm.com";
-
 		eval("ez-ipupdate",
 		     "-S", service, "-i", wan_ifname, "-h", host,
 		     "-A", "2", "-s", nserver,
@@ -1939,15 +1941,19 @@ asusddns_reg_domain(int reg)
 	// nvram ddns_cache, the same with /tmp/ddns.cache
 
 	if ((inet_addr(wan_ip) == inet_addr(nvram_safe_get("ddns_ipaddr"))) &&
-	    (strcmp(nvram_safe_get("ddns_hostname_x"), nvram_safe_get("ddns_hostname_old")) == 0)) {
+		(strcmp(nvram_safe_get("ddns_server_x"), nvram_safe_get("ddns_server_x_old")) == 0) &&
+		(strcmp(nvram_safe_get("ddns_hostname_x"), nvram_safe_get("ddns_hostname_old")) == 0)) {
 		nvram_set("ddns_return_code", "no_change");
-		logmessage("asusddns", "IP address & hostname have not changed since the last update.");
+		logmessage("asusddns", "IP address, server and hostname have not changed since the last update.");
 		return -1;
 	}
 
-	if (!nvram_match("ddns_server_x_old", "") &&
-	    strcmp(nvram_safe_get("ddns_server_x"), nvram_safe_get("ddns_server_x_old")) != 0) {
-		logmessage("asusddns", "clear ddns cache file for server setting change");
+	if (	(!nvram_match("ddns_server_x_old", "") &&
+		strcmp(nvram_safe_get("ddns_server_x"), nvram_safe_get("ddns_server_x_old"))) ||
+		(!nvram_match("ddns_hostname_x_old", "") &&
+		strcmp(nvram_safe_get("ddns_hostname_x"), nvram_safe_get("ddns_hostname_x_old")))
+	) {
+		logmessage("asusddns", "clear ddns cache file for server/hostname change");
 		unlink("/tmp/ddns.cache");
 	}
 	else if (!(fp = fopen("/tmp/ddns.cache", "r")) && (ddns_cache = nvram_get("ddns_cache"))) {
@@ -2646,6 +2652,8 @@ start_services(void)
 
 #ifdef RTCONFIG_WEBDAV
 	start_webdav();
+#else
+	system("sh /opt/etc/init.d/S50aicloud scan");
 #endif
 
 	run_custom_script("services-start", NULL);
@@ -2670,6 +2678,8 @@ stop_services(void)
 
 #ifdef RTCONFIG_WEBDAV
 	stop_webdav();
+#else
+	system("sh /opt/etc/init.d/S50aicloud scan");
 #endif
 
 #ifdef RTCONFIG_USB
@@ -3239,8 +3249,8 @@ again:
 			start_nas();
 #elif defined RTCONFIG_RALINK
 			start_8021x();
-                        if(nvram_match("pptpd_enable", "1"))
-                                start_pptpd();
+			if(nvram_match("pptpd_enable", "1"))
+				start_pptpd();
 #endif
 			start_wps();
 #ifdef RTCONFIG_BCMWL6
@@ -3429,11 +3439,14 @@ again:
 #ifdef RTCONFIG_FTP
 	else if (strcmp(script, "ftpd") == 0)
 	{
-		if(action&RC_SERVICE_STOP) stop_ftpd();
+		if(action&RC_SERVICE_STOP) {
+			stop_ftpd();
+		}
 		if(action&RC_SERVICE_START) {
 			start_ftpd();
-			start_firewall(wan_primary_ifunit(), 0);
 		}
+		/* for security concern, even if you stop ftp daemon, it is better to restart firewall to clean FTP port: 21. */
+		start_firewall(wan_primary_ifunit(), 0);
 	}
 #endif
 #ifdef RTCONFIG_SAMBASRV
@@ -3448,12 +3461,22 @@ again:
 #ifdef RTCONFIG_WEBDAV
 	else if (strcmp(script, "webdav") == 0)
 	{
-		if(action&RC_SERVICE_STOP) stop_webdav();
+		if(action&RC_SERVICE_STOP){ 
+			stop_webdav(); 
+		}
 		if(action&RC_SERVICE_START) {
 			start_firewall(wan_primary_ifunit(), 0);
 			start_webdav();
 		}
 	}
+#else
+	else if (strcmp(script, "webdav") == 0){
+		system("sh /opt/etc/init.d/S50aicloud scan");
+	}
+	else if (strcmp(script, "setting_webdav") == 0){
+		system("sh /opt/etc/init.d/S50aicloud restart");
+	}
+#endif
 	else if (strcmp(script, "enable_webdav") == 0)
 	{	
 		stop_ddns();
@@ -3463,14 +3486,28 @@ again:
 		start_ddns();
 		
 	}
-#endif
-#ifdef RTCONFIG_CLOUDSYNC
+//#endif
+//#ifdef RTCONFIG_CLOUDSYNC
 	else if (strcmp(script, "cloudsync") == 0)
 	{
-		if(action&RC_SERVICE_STOP) stop_cloudsync();
-		if(action&RC_SERVICE_START) start_cloudsync();
-	}
+#ifdef RTCONFIG_CLOUDSYNC
+		int fromUI = 0;
+
+		if(action&RC_SERVICE_STOP && action&RC_SERVICE_START)
+			fromUI = 1;
+
+		if(action&RC_SERVICE_STOP){
+			if(cmd[1])
+				stop_cloudsync(atoi(cmd[1]));
+			else
+				stop_cloudsync(-1);
+		}
+		if(action&RC_SERVICE_START) start_cloudsync(fromUI);
+#else
+		system("sh /opt/etc/init.d/S50smartsync restart");
 #endif
+	}
+//#endif
 #ifdef RTCONFIG_USB_PRINTER
 	else if (strcmp(script, "lpd") == 0)
 	{
@@ -3577,19 +3614,7 @@ again:
 	else if (strcmp(script, "ddns") == 0)
 	{
 		if(action&RC_SERVICE_STOP) stop_ddns();
-
-		if(action&RC_SERVICE_START) {
-			start_ddns();
-				
-			if (nvram_match("ddns_server_x", "WWW.ASUS.COM")
-				&& strstr(nvram_safe_get("ddns_hostname_x"), ".asuscomm.com") != NULL) {
-#ifdef RTCONFIG_USB
-				// computer_name is followed by DDNS's hostname
-//_dprintf("restart_nas_services(%d): test 12.\n", getpid());
-				restart_nas_services(1, 1);
-#endif
-			}
-		}
+		if(action&RC_SERVICE_START) start_ddns();
 	}	
 	else if (strcmp(script, "aidisk_asusddns_register") == 0)
 	{
@@ -4176,9 +4201,10 @@ void set_acs_ifnames()
 			(	nvram_match(strcat_r(prefix, "chanspec", tmp), "0") ||
 				nvram_match(strcat_r(prefix, "bw", tmp), "0")))
 		{
+#if 0
 			if (nvram_match(strcat_r(prefix, "bw", tmp), "0"))
 				nvram_set(strcat_r(prefix, "chanspec", tmp), "0");
-
+#endif
 			if (strlen(acs_ifnames))
 				sprintf(acs_ifnames, "%s %s", acs_ifnames, word);
 			else
@@ -4190,7 +4216,7 @@ void set_acs_ifnames()
 	nvram_set("acs_ifnames", acs_ifnames);
 #if 0
 	if (strlen(acs_ifnames))
-		nvram_set("wlready", "0");
+		nvram_set_int("wlready", 0);
 #endif
 }
 
@@ -4243,8 +4269,8 @@ firmware_check_main(int argc, char *argv[])
 	}
 	else {
 		_dprintf("FW Fail\n");
-                nvram_set("firmware_check", "0");
-        }
+		nvram_set("firmware_check", "0");
+	}
 	return;
 }
 

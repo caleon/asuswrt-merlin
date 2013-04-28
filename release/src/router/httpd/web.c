@@ -3957,10 +3957,10 @@ apply_cgi(webs_t wp, char_t *urlPrefix, char_t *webDir, int arg,
 		nvram_set_int("reboot_time", nvram_get_int("reboot_time") + offset);
 		websApply(wp, "Restarting.asp");
 		shutdown(fileno(wp), SHUT_RDWR);
-#ifdef RTCONFIG_DSL
-		system("adslate sysdefault"); /* Paul add 2012/8/7 */
-#endif
 		sys_default();
+#ifdef RTCONFIG_DSL
+		eval("adslate", "sysdefault"); /* Paul add 2012/8/7 */
+#endif
 		return (0);
 	}	
 	else if (!strcmp(action_mode, "logout")) // but, every one can reset it by this call

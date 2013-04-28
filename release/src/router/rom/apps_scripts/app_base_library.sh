@@ -3,6 +3,7 @@
 
 
 is_arm_machine=`uname -m |grep arm`
+productid=`nvram get productid`
 
 autorun_file=.asusrouter
 nonautorun_file=$autorun_file.disabled
@@ -13,6 +14,8 @@ apps_local_space=`nvram get apps_local_space`
 
 if [ -n "$is_arm_machine" ]; then
         pkg_type="arm"
+elif [ -n "$productid" ] && [ "$productid" == "VSL-N66U" ]; then
+        pkg_type="mipsbig"
 else
         pkg_type="mipsel"
 fi
@@ -158,6 +161,31 @@ if [ -z "`echo "$list_installed" |grep "spawn-fcgi - "`" ]; then
 		exit 1
 	fi
 fi
+
+DM_version1=`app_get_field.sh downloadmaster Version 2 |awk '{FS=".";print $1}'`
+DM_version2=`app_get_field.sh downloadmaster Version 2 |awk '{FS=".";print $4}'`
+if [ "$DM_version1" -gt "2" ] && [ "$DM_version2" -gt "59" ]; then
+	if [ -z "`echo "$list_installed" |grep "readline - "`" ]; then
+		ipkg install $apps_local_space/readline_*_$pkg_type.ipk
+		if [ "$?" != "0" ]; then
+			echo "Failed to install readline!"
+			nvram set apps_state_error=4
+			exit 1
+		fi
+	fi
+
+	if [ "$DM_version1" -gt "2" ] && [ "$DM_version2" -gt "74" ]; then
+		if [ -z "`echo "$list_installed" |grep "wxbase - "`" ]; then
+			ipkg install $apps_local_space/wxbase_*_$pkg_type.ipk
+			if [ "$?" != "0" ]; then
+				echo "Failed to install wxbase!"
+				nvram set apps_state_error=4
+				exit 1
+			fi
+		fi
+	fi
+fi
+
 
 APPS_MOUNTED_TYPE=`mount |grep "/dev/$APPS_DEV on " |awk '{print $5}'`
 if [ "$APPS_MOUNTED_TYPE" == "vfat" ]; then

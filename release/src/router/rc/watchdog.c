@@ -128,8 +128,6 @@ void led_control_normal(void)
 	led_control(LED_POWER, LED_ON);
 }
 
-extern int restore_defaults_g;
-
 void btn_check(void)
 {
 #ifdef BTN_SETUP
@@ -151,6 +149,12 @@ void btn_check(void)
 		}
 		else
 		{
+#ifdef RTCONFIG_DSL /* Paul add 2013/4/2 */
+			if((btn_count % 2)==0)
+				led_control(0, 1);
+			else
+				led_control(0, 0);
+#endif
 			if (!btn_pressed)
 			{
 				btn_pressed = 1;
@@ -162,20 +166,28 @@ void btn_check(void)
 				if (++btn_count > RESET_WAIT_COUNT)
 				{
 					fprintf(stderr, "You can release RESET button now!\n");
-
 					btn_pressed = 2;
 				}
 				if (btn_pressed == 2)
 				{
-#ifdef RTCONFIG_DSL
-					eval("adslate", "sysdefault");
-#endif
+#ifdef RTCONFIG_DSL /* Paul add 2013/4/2 */
+					led_control(0, 0);
+					alarmtimer(0, 0);
+					eval("mtd-erase","-d","nvram");
+					/* FIXME: all stop-wan, umount logic will not be called
+					 * prevous sys_exit (kill(1, SIGTERM) was ok
+					 * since nvram isn't valid stop_wan should just kill possible daemons,
+					 * nothing else, maybe with flag */
+					sync();
+					reboot(RB_AUTOBOOT);
+#else
 				/* 0123456789 */
 				/* 0011100111 */
 					if ((btn_count % 10) < 2 || ((btn_count % 10) > 4 && (btn_count % 10) < 7))
 						led_control(LED_POWER, LED_OFF);
 					else
 						led_control(LED_POWER, LED_ON);
+#endif
 				}
 			}
 		} // end BTN_RST MFG test
@@ -193,13 +205,14 @@ void btn_check(void)
 			if(wlan_sw_init == 0)
 			{
 				wlan_sw_init = 1;							
-				
+/*				
 				eval("iwpriv", "ra0", "set", "RadioOn=1");
 				eval("iwpriv", "rai0", "set", "RadioOn=1");
 				TRACE_PT("Radio On\n");	
 				nvram_set("wl0_radio", "1");
 				nvram_set("wl1_radio", "1");
 				nvram_commit(); 			
+*/
 			}
 			else
 			{
@@ -217,14 +230,23 @@ void btn_check(void)
 					sync();
 					reboot(RB_AUTOBOOT);					
 				}
-			
-				if(nvram_match("wl0_radio", "0") || nvram_match("wl1_radio", "0")){
-					eval("iwpriv", "ra0", "set", "RadioOn=1");
-					eval("iwpriv", "rai0", "set", "RadioOn=1");
-					TRACE_PT("Radio On\n"); 
-					nvram_set("wl0_radio", "1");
-					nvram_set("wl1_radio", "1");
-					nvram_commit(); 
+
+				if(nvram_match("wl0_HW_switch", "0") || nvram_match("wl1_HW_switch", "0")){
+					//Ever apply the Wireless-Professional Web GU.
+					//Not affect the status of WiFi interface, so do nothing
+				}
+				else{	//trun on WiFi by HW slash, make sure both WiFi interface enable.
+					if(nvram_match("wl0_radio", "0") || nvram_match("wl1_radio", "0")){
+						eval("iwpriv", "ra0", "set", "RadioOn=1");
+						eval("iwpriv", "rai0", "set", "RadioOn=1");
+						TRACE_PT("Radio On\n"); 
+						nvram_set("wl0_radio", "1");
+						nvram_set("wl1_radio", "1");
+
+						nvram_set("wl0_HW_switch", "0");
+						nvram_set("wl1_HW_switch", "0");
+						nvram_commit(); 
+					}
 				}
 			}	
 		}
@@ -263,7 +285,11 @@ void btn_check(void)
 				TRACE_PT("Radio Off\n");	
 				nvram_set("wl0_radio", "0");
 				nvram_set("wl1_radio", "0");
-				nvram_commit(); 	
+
+				nvram_set("wl0_HW_switch", "1");
+				nvram_set("wl1_HW_switch", "1");
+
+				nvram_commit();
 			}
 			else
 			{
@@ -273,8 +299,17 @@ void btn_check(void)
 					TRACE_PT("Radio Off\n");
 					nvram_set("wl0_radio", "0");
 					nvram_set("wl1_radio", "0");
+					
+					nvram_set("wl0_timesched", "0");
+					nvram_set("wl1_timesched", "0");
 				}
-			}		
+				
+				//indicate use switch HW slash manually.
+				if(nvram_match("wl0_HW_switch", "0") || nvram_match("wl1_HW_switch", "0")){
+					nvram_set("wl0_HW_switch", "1");
+					nvram_set("wl1_HW_switch", "1");
+				}
+			}	
 		}
 #endif
 	}
@@ -285,7 +320,7 @@ void btn_check(void)
 	if (btn_pressed != 0) return;
 #ifdef CONFIG_BCMWL5
 	// wait until wl is ready
-	if (restore_defaults_g) return;
+	if (!nvram_get_int("wlready")) return;
 #endif
 	// Added WPS button radio toggle option
 #if defined(RTCONFIG_WIFI_TOG_BTN)

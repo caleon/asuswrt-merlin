@@ -53,7 +53,9 @@ struct nvram_tuple router_defaults[] = {
 	{ "wl_vifnames", 	""	},	/* Virtual Interface Names */
 	/* Wireless parameters */
 	{ "wl_version", EPI_VERSION_STR },	/* OS revision */
-
+#ifdef RTCONFIG_DSL
+	{ "wl_HW_switch", "0" },			/* siwtch WiFi slash*/
+#endif
 	{ "wl_ifname", "" },			/* Interface name */
 	{ "wl_hwaddr", "" },			/* MAC address */
 	{ "wl_phytype", "b" },			/* Current wireless band ("a" (5 GHz),
@@ -186,7 +188,6 @@ struct nvram_tuple router_defaults[] = {
 #ifndef RTCONFIG_RALINK
 	{ "wl_vlan_prio_mode", "off"},		/* VLAN Priority support */
 	{ "wl_leddc", "0x640000"},		/* 100% duty cycle for LED on router */
-#endif
 	{ "wl_rxstreams", "0"},			/* 802.11n Rx Streams, 0 is invalid, WLCONF will
 						 * change it to a radio appropriate default
 						 */
@@ -202,7 +203,11 @@ struct nvram_tuple router_defaults[] = {
 	{ "wl_ampdu_rr_rtylimit_tid", "3 3 3 3 3 3 3 3"},
 	{ "wl_amsdu", "auto"},
 	{ "wl_obss_coex", "1"},
-
+#ifdef RTCONFIG_BCMARM
+	{ "wl_ack_ratio", "0"},
+	{ "wl_ampdu_mpdu", "0"},
+#endif
+#endif
 	/* WPA parameters */
 	{ "wl_auth_mode", "none"},		/* Network authentication mode (radius|none) */
 	{ "wl_wpa_psk", ""},			/* WPA pre-shared key */
@@ -374,6 +379,9 @@ struct nvram_tuple router_defaults[] = {
 	{ "wl_ChannelGeography", "2" },
 	{ "wl_txbf", "1" },
 	{ "wl_txbf_en", "0" },
+#ifdef RTCONFIG_BCMARM
+	{ "wl_itxbf", "0" },
+#endif
 #endif
 
 #ifdef RTCONFIG_EMF
@@ -436,7 +444,9 @@ struct nvram_tuple router_defaults[] = {
 	/* Tx Beamforming */
 	{ "wl_txbf_bfr_cap", "0", 0 },
 	{ "wl_txbf_bfe_cap", "0", 0 },
+#ifndef RTCONFIG_BCMARM
 	{ "wl_txbf_timer", "25", 0 },
+#endif
 #endif
 
 	// make sure its purpose
@@ -453,7 +463,11 @@ struct nvram_tuple router_defaults[] = {
 	// TODO: for the bad CTF. After updating CTF, need to mark these codes.
 	{ "ctf_disable_modem", 		"0"		},
 #endif
+#ifndef RTCONFIG_BCMARM
 	{ "gro_disable", 		"1"		},
+#else
+	{ "gro_disable",		"0"		},
+#endif
 #endif
 //#ifdef RTCONFIG_BCMWL6
 //	{ "pktc_disable", 		"0"		},
@@ -631,12 +645,13 @@ struct nvram_tuple router_defaults[] = {
 	{ "wans_mode", "fo" }, 		// off/failover/loadbance/routing(off/fo/lb/rt)
 #ifdef RTCONFIG_DSL
 	{ "wans_dualwan", "dsl usb"},
+	{ "wans_disconn_time", "120" }, /* Paul modify 2013/4/2, DSL takes some time to sync up */
 #else
 	{ "wans_dualwan", "wan usb"},
-#endif
 	{ "wans_disconn_time", "60" }, 	// when disconning, max waited time for switching.
+#endif
 	{ "wans_lanport", "1"},
-	{ "wans_lb_ratio", "3:1" }, 	// only support two wan simutaneously
+	{ "wans_lb_ratio", "3:1" }, 	// only support two wan simultaneously
 	{ "wans_routing_enable", "0" },
 	{ "wans_routing_rulelist", "" },
 	{ "wan0_routing_isp_enable", "0" },
@@ -644,7 +659,11 @@ struct nvram_tuple router_defaults[] = {
 	{ "wan1_routing_isp_enable", "0" },
 	{ "wan1_routing_isp", "china_mobile" },
 #else
+#ifdef RTCONFIG_DSL
+	{ "wans_disconn_time", "120" }, /* Paul modify 2013/4/2, DSL takes some time to sync up */
+#else
 	{ "wans_disconn_time", "60" }, 	// when disconning, max waited time for switching.
+#endif
 #endif // RTCONFIG_DUALWAN
 
 #ifdef RTCONFIG_DSL
@@ -1016,7 +1035,11 @@ struct nvram_tuple router_defaults[] = {
 	{ "diskmon_usbport", ""}, // 1, 2
 	{ "diskmon_part", ""}, // sda1, sdb1
 	{ "diskmon_force_stop", "0"}, // 0: disable, 1: stop if possible
+#ifndef RTCONFIG_BCMARM
 	{ "diskremove_bad_device", "1"}, // 0: disable, 1: remove the bad device
+#else
+	{ "diskremove_bad_device", "0"},
+#endif
 #endif
 #endif
 
@@ -1096,7 +1119,15 @@ struct nvram_tuple router_defaults[] = {
 	{ "btn_rst", "0"},		// 2008.03 James.
 	{ "btn_ez", "0"},		// 2008.03 James.
 	{ "btn_ez_radiotoggle", "0"},  // Turn WPS into radio toggle
-
+#ifdef RTCONFIG_WIFI_TOG_BTN
+        { "btn_wifi_toggle", "0"},
+#endif
+#ifdef RTCONFIG_USBEJECT
+        { "btn_usbeject", "0"},
+#endif
+#ifdef RTCONFIG_TURBO
+	{ "btn_turbo", "0"},
+#endif
 	 /* APCLI/STA parameters */
 	#if 0
 	{ "sta_ssid", "", 0 },
@@ -1823,6 +1854,20 @@ struct nvram_tuple bcm4360ac_defaults[] = {
 	{ "pci/2/1/ledbh3", "11", 0 },
 	{ "pci/2/1/ledbh10", "7", 0 },
 
+	{ 0, 0, 0 }
+};
+#else
+struct nvram_tuple bcm4360ac_defaults[] = {
+	{ "0:ledbh0", "11", 0 },
+	{ "0:ledbh1", "11", 0 },
+	{ "0:ledbh2", "11", 0 },
+	{ "0:ledbh3", "11", 0 },
+	{ "0:ledbh10", "7", 0 },
+	{ "1:ledbh0", "11", 0 },
+	{ "1:ledbh1", "11", 0 },
+	{ "1:ledbh2", "11", 0 },
+	{ "1:ledbh3", "11", 0 },
+	{ "1:ledbh10", "7", 0 },
 	{ 0, 0, 0 }
 };
 #endif

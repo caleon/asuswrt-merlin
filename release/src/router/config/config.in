@@ -365,3 +365,7 @@ config RTCONFIG_OPTIMIZE_XBOX
 	bool "OPTIMIZE_XBOX"
 	default n
 
+config RTCONFIG_DYN_DICT_NAME
+	bool "DYN_DICT_NAME"
+	default n
+

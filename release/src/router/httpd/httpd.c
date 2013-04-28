@@ -189,6 +189,10 @@ struct language_table language_tables[] = {
 	{"it-it", "IT"},
 	{"it-ch", "IT"},
 	{"uk", "UK"},
+	{"hu-hu", "HU"},
+	{"hu", "HU"},
+	{"ro-ro", "RO"},
+	{"ro", "RO"},
 	{NULL, NULL}
 };
 
@@ -1099,6 +1103,41 @@ int is_firsttime(void)
 		return 1;
 }
 
+/* str_replace
+* @param {char*} source
+* @param {char*} find
+* @param {char*} rep
+* */
+char *config_model_name(char *source, char *find,  char *rep){
+   int find_L=strlen(find);
+   int rep_L=strlen(rep);
+   int length=strlen(source)+1;
+   int gap=0;
+
+   char *result = (char*)malloc(sizeof(char) * length);
+   strcpy(result, source);
+
+   char *former=source;
+   char *location= strstr(former, find);
+
+	/* stop searching when there is no finding string */
+   while(location!=NULL){
+       gap+=(location - former);
+       result[gap]='\0';
+
+       length+=(rep_L-find_L);
+       result = (char*)realloc(result, length * sizeof(char));
+       strcat(result, rep);
+       gap+=rep_L;
+
+       former=location+find_L;
+       strcat(result, former);
+
+       location= strstr(former, find);
+   }
+   return result;
+}
+
 #ifdef TRANSLATE_ON_FLY
 #ifdef RTCONFIG_AUTODICT
 int
@@ -1118,6 +1157,10 @@ load_dictionary (char *lang, pkw_t pkw)
 #ifndef RELOAD_DICT
 	static char loaded_dict[12] = {'\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0'};
 #endif  // RELOAD_DICT
+#if RTCONFIG_DYN_DICT_NAME
+	char *dyn_dict_buf;
+	char *dyn_dict_buf_new;
+#endif
 
 //printf ("lang=%s\n", lang);
 
@@ -1167,6 +1210,23 @@ load_dictionary (char *lang, pkw_t pkw)
 	dict_size -= 3;
 	printf ("dict_size %d\n", dict_size);
 
+#if RTCONFIG_DYN_DICT_NAME
+	dyn_dict_buf = malloc(dict_size);
+	fseek (dfp, 0L, SEEK_SET);
+	// skip BOM
+	fread (dummy_buf, 1, 3, dfp);
+	// read to dict string buffer
+	memset(dyn_dict_buf, 0, dict_size);
+	fread (dyn_dict_buf, 1, dict_size, dfp);
+	dyn_dict_buf_new = config_model_name(dyn_dict_buf, "ZVDYNMODELVZ", nvram_safe_get("productid"));
+
+	free(dyn_dict_buf);
+
+	dict_size = sizeof(char) * strlen(dyn_dict_buf_new);
+	pkw->buf = q = malloc (dict_size);
+	strcpy(pkw->buf, dyn_dict_buf_new);
+	free(dyn_dict_buf_new);
+#else
 	pkw->buf = q = malloc (dict_size);
 
 	fseek (dfp, 0L, SEEK_SET);
@@ -1174,8 +1234,8 @@ load_dictionary (char *lang, pkw_t pkw)
 	fread (dummy_buf, 1, 3, dfp);
 	// read to dict string buffer
 	memset(pkw->buf, 0, dict_size);
-	fread (pkw->buf, 1, dict_size, dfp);	
-	
+	fread (pkw->buf, 1, dict_size, dfp);
+#endif
 	// calc how many dict item , dict_item
 	remain_dict = dict_size;
 	tmp_ptr = pkw->buf;

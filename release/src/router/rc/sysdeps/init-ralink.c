@@ -563,6 +563,7 @@ void init_syspara(void)
 	nvram_set("buildno", rt_serialno);
 	nvram_set("extendno", rt_extendno);
 	nvram_set("buildinfo", rt_buildinfo);
+	nvram_set("swpjverno", rt_swpjverno);
 
 	/* /dev/mtd/2, RF parameters, starts from 0x40000 */
 	dst = buffer;

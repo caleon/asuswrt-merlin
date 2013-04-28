@@ -521,8 +521,8 @@ extern void stop_ftpd(void);
 extern void start_ftpd(void);
 #endif
 #ifdef RTCONFIG_CLOUDSYNC
-extern void stop_cloudsync(void);
-extern void start_cloudsync(void);
+extern void stop_cloudsync(int type);
+extern void start_cloudsync(int fromUI);
 #endif
 #if defined(RTCONFIG_APP_PREINSTALLED) || defined(RTCONFIG_APP_NETINSTALLED)
 extern int stop_app(void);

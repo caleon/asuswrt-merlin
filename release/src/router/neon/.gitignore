@@ -4,4 +4,4 @@ src/.libs
 Makefile
 libtool
 neon-config
-
+*.pc
