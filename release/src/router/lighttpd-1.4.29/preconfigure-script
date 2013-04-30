@@ -39,4 +39,5 @@ $CONFIGURE --prefix=$cur_dir/_inst \
 --without-zlib \
 --without-bzip2 \
 --enable-shared \
---disable-static
+--disable-static \
+--libdir=/usr/lib
