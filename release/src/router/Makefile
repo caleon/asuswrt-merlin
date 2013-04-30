@@ -249,7 +249,7 @@ obj-$(RTCONFIG_PPTPD) += pptpd
 
 obj-$(RTCONFIG_WEBDAV) += sqlite
 obj-$(RTCONFIG_WEBDAV) += libxml2
-obj-$(RTCONFIG_WEBDAV) += pcre-8.31
+obj-$(RTCONFIG_WEBDAV) += pcre-8.12
 obj-$(RTCONFIG_WEBDAV) += lighttpd-1.4.29
 
 obj-$(RTCONFIG_IXIAEP) += ixia_endpoint
@@ -2125,7 +2125,7 @@ lighttpd-1.4.29/stamp-h1:
 	   ./preconfigure-script \
 	touch $@
 
-lighttpd-1.4.29: shared nvram libdisk samba-3.5.8 pcre-8.31 libxml2 sqlite openssl lighttpd-1.4.29/stamp-h1
+lighttpd-1.4.29: shared nvram libdisk samba-3.5.8 pcre-8.12 libxml2 sqlite openssl lighttpd-1.4.29/stamp-h1
 	$(MAKE) -C lighttpd-1.4.29 $(PARALLEL_BUILD)
 	$(MAKE) -C lighttpd-1.4.29/src copy-prebuild
 
